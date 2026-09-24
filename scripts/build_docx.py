@@ -119,7 +119,9 @@ def check_markdown(path):
         stat['词条数'] = len([l for l in tail if re.match(r'^\*\*\d+\.\s', l.strip())])
         stat['提示条数'] = len([l for l in tail
                                 if l.strip().lstrip('*').startswith('提示：')])
-        stat['分组数'] = len([l for l in tail if re.match(r'^[①②③④⑤⑥⑦⑧⑨]', l.strip())])
+        # 组标题在 markdown 里写作 `### ① …`，所以前缀要允许 # 和空白
+        stat['分组数'] = len([l for l in tail
+                              if re.match(r'^#*\s*[①②③④⑤⑥⑦⑧⑨]', l.strip())])
 
     odd = [i + 1 for i, l in enumerate(lines) if l.count('**') % 2]
     if odd:
