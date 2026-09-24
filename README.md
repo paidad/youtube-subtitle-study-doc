@@ -133,3 +133,10 @@ python scripts/apply_fonts.py out.docx --en Calibri --cn 宋体 --size 12
 ## 说明
 
 示例中出现的视频《The Reality of Change》与频道 Flowering Philosophies 仅作校对实例引用，原视频版权归原作者所有。
+
+---
+
+## License
+
+[MIT](LICENSE)
+
