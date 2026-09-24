@@ -18,6 +18,26 @@ from xml.etree import ElementTree as ET
 
 TS = re.compile(r'^\[\d\d:\d\d\]$')
 CJK = re.compile(r'[\u4e00-\u9fff]')
+# 头部标签行：频道 / 原视频链接 / 视频时长 / 整理日期
+HDR = re.compile(r'^(频道|原视频链接|视频时长|整理日期)\s*[：:]')
+# 段落：**自闭合空段** 或 正常配对段落。
+# 前半段不能少 —— `doc_insert_paragraph_with_text(text="")` 建出的空段就是 `<w:p .../>`，
+# 用 `<w:p[ >].*?</w:p>` 会漏掉它们（还会漏数段落、误判缩进）。
+PAT = re.compile(r'<w:p\b[^>]*/>|<w:p[ >].*?</w:p>', re.S)
+
+
+def guess_header_lines(texts):
+    """头部 = 大标题 + 紧随其后的标签行。
+
+    2026-09-24 起头部是**条件性**的：
+      给了原视频链接 → 4 段（标题 / 频道 / 原视频链接 / 视频时长…整理日期）
+      没给链接       → 2 段（标题 / 整理日期）
+    这里按「从第 2 段起连续匹配标签模式」自动探测，避免手填错。
+    """
+    n = 1
+    while n < len(texts) and HDR.match(texts[n].strip()):
+        n += 1
+    return n
 
 
 def main():
@@ -28,8 +48,8 @@ def main():
     ap.add_argument('--size', type=float, default=12.0)
     ap.add_argument('--expect-blocks', type=int, default=None,
                     help='分段精读区预期区块数（= 时间戳数）')
-    ap.add_argument('--header-lines', type=int, default=4,
-                    help='头部标签行段数（标题 + 频道/链接/时长 等），默认 4')
+    ap.add_argument('--header-lines', type=int, default=None,
+                    help='头部段数（标题 + 标签行）。默认自动探测：有链接 4 段 / 无链接 2 段')
     args = ap.parse_args()
 
     p = args.path
@@ -56,7 +76,7 @@ def main():
 
     doc = z.read('word/document.xml').decode('utf-8')
     sty = z.read('word/styles.xml').decode('utf-8')
-    paras = re.findall(r'<w:p[ >].*?</w:p>', doc, re.S)
+    paras = PAT.findall(doc)
     txt = lambda x: ''.join(re.findall(r'<w:t[^>]*>(.*?)</w:t>', x, re.S))
     kind = lambda q: ('HEAD' if '<w:outlineLvl' in q
                       else ('TS' if TS.match(txt(q).strip())
@@ -64,6 +84,10 @@ def main():
 
     # ---------- 2. 结构 ----------
     print(f'\n=== 结构（段落总数 {len(paras)}）===')
+    n_selfclose = len(re.findall(r'<w:p\b[^>]*/>', doc))
+    if n_selfclose:
+        print(f'  ⚠️ 有 {n_selfclose} 个自闭合空段 `<w:p .../>`（没有 <w:pPr>，设不了缩进）'
+              f'\n     → 跑一遍 scripts/set_indent.py 把它们展开并补缩进')
     heads = [(i, txt(q), set(re.findall(r'<w:sz w:val="(\d+)"', q)))
              for i, q in enumerate(paras) if '<w:outlineLvl' in q]
     print('  标题段：')
@@ -78,6 +102,15 @@ def main():
     n_ts = sum(1 for q in paras if kind(q) == 'TS')
     check('时间戳数 = 区块数', args.expect_blocks is None or n_ts == args.expect_blocks,
           f'实际 {n_ts}' + (f' / 预期 {args.expect_blocks}' if args.expect_blocks else ''))
+
+    # 头部行数：有链接 4 段 / 无链接 2 段，自动探测
+    all_txt = [txt(q).strip() for q in paras]
+    hdr = args.header_lines or guess_header_lines(all_txt)
+    has_link = any(t.startswith('原视频链接') for t in all_txt[:hdr])
+    print(f'  头部 {hdr} 段（{"手动指定" if args.header_lines else "自动探测"}）→ '
+          f'{"含原视频链接" if has_link else "无链接：频道/链接/时长都不写"}')
+    for t in all_txt[:hdr]:
+        print(f'    {t[:60]!r}')
 
     # ---------- 3. 区块模式 ----------
     i0 = next((i for i, q in enumerate(paras) if txt(q).strip().startswith('一、分段精读')), None)
@@ -97,11 +130,16 @@ def main():
 
     # ---------- 4. 关键内容 ----------
     print('\n=== 关键内容 ===')
-    check('超链接域存在', 'HYPERLINK' in doc,
-          str(re.findall(r'HYPERLINK &quot;([^&]+)&quot;', doc)))
+    if has_link:
+        check('超链接域存在', 'HYPERLINK' in doc,
+              str(re.findall(r'HYPERLINK &quot;([^&]+)&quot;', doc)))
+    else:
+        print('  ➖ 超链接检查：本次头部无「原视频链接」行，跳过')
     check('无版权行残留', not any('版权' in txt(q) for q in paras))
+    n_labels = hdr - 1
     n_off = len(re.findall(r'<w:b w:val="0"/>', doc))
-    check('头部标签显式不加粗', n_off >= 3, f'<w:b w:val="0"/> 出现 {n_off} 次')
+    check(f'头部 {n_labels} 个标签显式不加粗', n_off >= n_labels,
+          f'<w:b w:val="0"/> 出现 {n_off} 次')
 
     # ---------- 5. 缩进 ----------
     print('\n=== 首行缩进 ===')
@@ -113,7 +151,6 @@ def main():
         if k in tab:
             print(f'  {k:<6} {dict(tab[k])}')
     # 头部标签行（标题后、正文前的几段）本来就该顶格，从正文检查里排除
-    hdr = args.header_lines
     body_p = [q for q in paras[hdr:] if kind(q) == 'P']
     body_ok = all('firstLineChars="200"' in q for q in body_p)
     check(f'正文段（跳过头部 {hdr} 段）全部 2 字符缩进', body_ok,

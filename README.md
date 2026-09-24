@@ -2,7 +2,7 @@
 
 一个 [WorkBuddy](https://www.workbuddy.cn) 技能（Agent Skill）：把 YouTube 自动生成的字幕 txt（时间戳 / 英文 ASR / 中文机翻）整理成一份可直接打印、也能对着视频精读的**中英对照 Word 稿**。
 
-核心价值在两件事：**修掉 ASR 与机翻的错误**，以及**按固定规范产出排版统一的成品**。
+核心价值在三件事：**修掉 ASR 与机翻的错误**、**按固定规范产出排版统一的成品**、**几秒钟出稿**。
 
 ---
 
@@ -49,6 +49,31 @@ I didn't think this would be the reality of change. ……
 
 ---
 
+## ⚡ 一条命令出成品
+
+生成 docx 的整条链子已经封装成 `scripts/build_docx.py`：
+
+```bash
+python scripts/build_docx.py 中间稿.md "2026-09-24 视频标题.docx"
+```
+
+它在一个进程里跑完：**自检中间稿 → 清残留编辑器实例 → 建文档 → 写内容 → 插区块空行 → 页码 → 保存 → 4 个 XML 补丁**。
+
+为什么值得封装：底层的 `edsdk.py` 是个 CLI，**每次调用都要重启一个 Python 进程**（实测启动 1.0 秒，真正通信只有 0.15 秒）。手工一步步调要 30+ 次，光插 26 个空行就 31 秒，再叠加每一步的推理往返，**一份稿子实测 12 分钟**。串成一个脚本后 **实测 5–6 秒**，产出与手工流程逐字一致。
+
+参数：
+
+| 参数 | 作用 |
+|---|---|
+| `--no-patch` | 只生成，不打 4 个 XML 补丁 |
+| `--keep-open` | 不关闭编辑器实例（要手工接着改时用） |
+| `--skip-check` | 跳过中间稿自检 |
+| `-v` | 打印重试 / 清理细节 |
+
+脚本自带**中间稿自检**，不合格直接停、**不碰编辑器**：`# 大标题` 存在、区块数、两个二级标题存在且顺序对、全篇大意 200–250 中文字、无中文弯引号、无相邻加粗、每行 `**` 成对。
+
+---
+
 ## 安装
 
 把整个目录放到 WorkBuddy 的技能目录下：
@@ -70,7 +95,7 @@ Windows 下是 `%USERPROFILE%\.workbuddy-ai\skills\youtube-subtitle-study-doc\`�
 > 把这个字幕整理成精读稿：`~/Downloads/xxx.txt`
 > 帮我整理一下这个 YouTube 字幕，做成中英对照的 Word
 
-技能会自动触发。它一般不反问，只在两种情况下先确认：**你的描述和文件实际对不上**（比如你说"宋体"、文件里其实是仿宋），或**规范里有多个合理选项**。
+技能会自动触发。它只在两种情况下先确认：**没有原视频链接**（问一句"要提供吗"，答"没有"就做只有标题 + 日期的精简头部），或**你的描述和文件实际对不上**（比如你说"宋体"、文件里其实是仿宋）。
 
 产出文件名 = `当天日期 + 空格 + 视频标题`（如 `2026-09-23 The Reality of Change.docx`），标题里的 `\ / : * ? " < > |` 自动换成 `-`。
 
@@ -80,24 +105,30 @@ Windows 下是 `%USERPROFILE%\.workbuddy-ai\skills\youtube-subtitle-study-doc\`�
 
 ```
 youtube-subtitle-study-doc/
-├── SKILL.md                    主流程（技能被触发时读这个）
-├── 使用说明书.md                给使用者看的操作说明
+├── SKILL.md                      主流程（技能被触发时读这个）
+├── 使用说明书.md                  给使用者看的操作说明
 ├── references/
-│   ├── spec.md                 成品规范全字段（结构/字体/字号/缩进/间距/词表）
-│   ├── proofreading.md         ASR / 机翻错误速查信号（9 类，带真实例子）
-│   ├── docx-pipeline.md        生成 docx 的命令序列与参数模板
-│   └── docx-pitfalls.md        踩坑清单（editor SDK + WPS）
+│   ├── spec.md                   成品规范全字段（结构/字体/字号/缩进/间距/词表/引号）
+│   ├── proofreading.md           ASR / 机翻错误速查信号（11 类，带真实例子）
+│   ├── docx-pipeline.md          生成 docx 的命令序列与参数模板
+│   └── docx-pitfalls.md          踩坑清单（editor SDK + WPS，A1–A19）
 └── scripts/
-    ├── scan_subtitles.py       扫字幕：块数、词数、建议段数、噪声块
-    ├── bold_terms.py           按词表给正文词条批量加粗
-    ├── apply_fonts.py          设基准字体 + 剥离段落直设字体
-    ├── fix_paraid.py           去重复 paraId（WPS 副作用）
-    └── verify_docx.py          交付前全项校验
+    ├── scan_subtitles.py         扫字幕：块数、词数、建议段数、噪声块
+    ├── bold_terms.py             按词表给正文词条批量加粗（自动合并相邻加粗）
+    ├── build_docx.py             ⚡ 一键流水线：中间稿 → 成品 docx
+    ├── apply_fonts.py            设基准字体 + 剥离段落直设字体
+    ├── fix_title_and_labels.py   补大标题黑体与居中、去掉头部标签的加粗
+    ├── fix_paraid.py             去重复 paraId（WPS 副作用）
+    ├── set_indent.py             逐段设首行缩进（顺带修好"自闭合空段"）
+    └── verify_docx.py            交付前全项校验
 ```
 
-脚本可单独使用：
+脚本也能单独用：
 
 ```bash
+# 一条命令出成品（最常用）
+python scripts/build_docx.py 中间稿.md "out.docx"
+
 # 先看字幕规模
 python scripts/scan_subtitles.py ~/Downloads/xxx.txt
 
@@ -105,7 +136,10 @@ python scripts/scan_subtitles.py ~/Downloads/xxx.txt
 python scripts/verify_docx.py "out.docx" --en Calibri --cn 仿宋 --size 12 --expect-blocks 74
 
 # 只换字体，不动内容
-python scripts/apply_fonts.py out.docx --en Calibri --cn 宋体 --size 12
+python scripts/apply_fonts.py out.docx --en Calibri --cn 仿宋 --size 12
+
+# 逐段设首行缩进（正文 2 字符，标题/时间戳/空段顶格）
+python scripts/set_indent.py out.docx
 ```
 
 ---
@@ -113,7 +147,7 @@ python scripts/apply_fonts.py out.docx --en Calibri --cn 宋体 --size 12
 ## 依赖
 
 - **WorkBuddy** 平台，且装有内置技能 `tencent-local-office-edit`（生成 docx 走它的 `edsdk.py`，**不要用 python-docx**）
-- Python 3.11+（只用标准库：`zipfile` / `re` / `xml.etree`）
+- Python 3.11+（只用标准库：`zipfile` / `re` / `xml.etree` / `subprocess`）
 - 处理中文路径前先设 `PYTHONIOENCODING=utf-8`
 
 ---
@@ -125,6 +159,10 @@ python scripts/apply_fonts.py out.docx --en Calibri --cn 宋体 --size 12
 3. **WPS 保存会重写样式表** —— 基准字体要同时写进 `docDefaults` 和 `Normal` 样式。
 4. **插空行会把上一段的格式"搬走"** —— 所以顺序是：先插完所有空行，最后再统一设缩进。
 5. **WPS 会留下重复的段落 ID** —— Word 打开会提示"修复文档"，需要清掉。
+6. **markdown 导入有四个"静默坑"** —— `# 大标题` 不给中文字体（回落成仿宋）、也不给居中（变成左对齐）、`**标签：**` 会落成加粗、相邻加粗 `**a** **b**` 会吞掉中间空格。四个都不报错但结果不对，所以最后专门跑脚本补掉。
+7. **插空行建出来的段落是"自闭合"的** —— 它没有段落属性容器，用常规正则数不到它，直接往上写缩进还会把文档写坏。
+8. **底层 SDK 出错时会 `sys.exit(1)`** —— 直接杀掉调用它的脚本，让"检查返回值再兜底"的代码变成死代码。必须捕获 `SystemExit` 并重定向输出。
+9. **新建文档后立刻设样式会撞瞬时竞态** —— 报"document is not opened"，但文档其实建好了。重试即可。
 
 完整清单见 `references/docx-pitfalls.md`。
 
@@ -139,4 +177,3 @@ python scripts/apply_fonts.py out.docx --en Calibri --cn 宋体 --size 12
 ## License
 
 [MIT](LICENSE)
-

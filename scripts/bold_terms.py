@@ -46,8 +46,13 @@ def inside_bold(line, pos):
 
 
 def bold_line(line, pattern):
-    """返回 (新行, 本次新增的加粗个数)。"""
-    out, pos, added = [], 0, 0
+    """返回 (新行, 本次新增的加粗个数)。
+
+    ⚠️ 相邻加粗要合并：`**self-doubt** **trickles in**` 经 doc_insert_markdown 导入后
+    会变成**一个 run 且中间的空格被吞掉**（实测出现 "self-doubttrickles in"）。
+    所以相邻的 `**a** **b**` 必须合并成 `**a b**`。
+    """
+    out, pos = [], 0
     for m in pattern.finditer(line):
         s, e = m.span()
         if s < pos or inside_bold(line, s):
@@ -55,9 +60,12 @@ def bold_line(line, pattern):
         out.append(line[pos:s])
         out.append('**' + m.group(0) + '**')
         pos = e
-        added += 1
     out.append(line[pos:])
-    return ''.join(out), added
+    new = ''.join(out)
+    # 合并被空白隔开的相邻加粗
+    new = re.sub(r'\*\*([^*\n]+?)\*\*(\s+)\*\*([^*\n]+?)\*\*', r'**\1\2\3**', new)
+    added = (new.count('**') - line.count('**')) // 2
+    return new, added
 
 
 def main():

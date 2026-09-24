@@ -1,7 +1,8 @@
 # ASR / 机翻错误速查信号
 
-> 校对 YouTube 自动字幕时，优先按这 9 类扫。每类都附真实实例（来自
-> Flowering Philosophies《The Reality of Change》，2026-09-23 整理）。
+> 校对 YouTube 自动字幕时，优先按这 11 类扫。每类都附真实实例
+> （来自 Flowering Philosophies《The Reality of Change》2026-09-23，
+> 以及《get up and keep going》2026-09-24 两份字幕）。
 
 ## 1. `[music]` / `[applause]` 等标记被机翻成中文混进正文
 
@@ -86,6 +87,35 @@
 - `I feel **shameful** to cry` → `ashamed`
 
 **处理**：按语法修正。
+
+---
+
+## 10. 专名被 ASR 听成另一种拼法
+
+**信号**：人名 / 作品名读起来"不太像真的"，或同一个名字前后出现两种写法。
+
+**实例**（2026-09-24 那份）：
+
+- `Annayia` → **Inayah**（主播真名，她自己反复念）
+- `Marie from The Aristocrats` → **The Aristocats**（《猫儿历险记》，迪士尼动画）
+- `Dr. Joe Despensza` → **Dr. Joe Dispenza**（乔·迪斯本扎，写冥想与大脑的作者）
+- `through the ringer` → **wringer**（`put sb through the wringer` = 把人折腾得够呛）
+
+**处理**：先按上下文猜，再搜索核实。**人名要统一成正确拼法、全文前后一致** ——
+ASR 常把同一个名字听成两种写法（`Anaya` / `Enya` / `Annayia` 都出现过）。
+
+## 11. ASR 掉尾 / 吞音
+
+**信号**：出现"不像单词"的残缺形式。
+
+**实例**：
+
+- `oursel` → **ourselves**（掉了 `-ves`，同一份里出现 3 次）
+- `might not even had known` → **have known**
+- `here are a deer` → **there's a deer**（`here` / `there` 混淆）
+
+**处理**：按语法和上下文补全。同一残缺形式反复出现时，基本可确定是 ASR 的系统性问题，
+不是说话人口误 —— 放心修。
 
 ---
 

@@ -88,13 +88,21 @@ def main():
     else:
         print('⚠️ 未找到 docDefaults/rPrDefault，跳过')
 
+    # Normal 样式：**新生成的 docx 里通常没有 <w:rPr>**（只有 <w:name> + <w:pPr>），
+    # 所以不能只做替换，必须先判断有没有 rPr，没有就插一个进去。
     m2 = re.search(r'(<w:style [^>]*w:default="1"[^>]*>.*?<w:rPr>)(.*?)(</w:rPr></w:style>)',
                    sty, re.S)
     if m2:
         print('Normal 样式 原 rPr : ' + m2.group(2))
         sty = sty[:m2.start(2)] + rfonts + sz + sty[m2.end(2):]
     else:
-        print('⚠️ 未找到默认段落样式（Normal），跳过')
+        m3 = re.search(r'<w:style [^>]*w:default="1"[^>]*>.*?</w:style>', sty, re.S)
+        if m3:
+            print('Normal 样式无 rPr → 插入一份')
+            sty = (sty[:m3.end() - len('</w:style>')] + '<w:rPr>' + rfonts + sz
+                   + '</w:rPr>' + sty[m3.end() - len('</w:style>'):])
+        else:
+            print('⚠️ 未找到默认段落样式（Normal），跳过')
 
     data['word/styles.xml'] = sty.encode('utf-8')
     print(f'基准字体已写入：en={args.en}  cn={args.cn}  size={args.size}pt (sz={half})')
@@ -109,7 +117,8 @@ def main():
         strip_sz = re.compile(r'<w:sz w:val="\d+"/>')
         strip_szcs = re.compile(r'<w:szCs w:val="\d+"/>')
 
-        parts = re.split(r'(<w:p[ >].*?</w:p>)', doc, flags=re.S)
+        # 自闭合空段 `<w:p .../>` 也要算进来，否则段落总数会少（见 set_indent.py 的说明）
+        parts = re.split(r'(<w:p\b[^>]*/>|<w:p[ >].*?</w:p>)', doc, flags=re.S)
         total, changed, skipped_head = 0, 0, 0
         for k, part in enumerate(parts):
             if not part.startswith('<w:p'):
