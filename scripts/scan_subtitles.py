@@ -34,8 +34,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('path')
     ap.add_argument('--per-seg', type=int, default=110, help='目标每段词数（默认 110）')
-    ap.add_argument('--min-words', type=int, default=90)
-    ap.add_argument('--max-words', type=int, default=130)
+    ap.add_argument('--min-words', type=int, default=80,
+                    help='段落词数下限（默认 80；常规目标 90–130，短素材允许 80–90）')
+    ap.add_argument('--max-words', type=int, default=130,
+                    help='段落词数上限（默认 130）')
     args = ap.parse_args()
 
     raw = io.open(args.path, encoding='utf-8', errors='replace').read()
