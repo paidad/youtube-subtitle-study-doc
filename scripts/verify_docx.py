@@ -18,8 +18,11 @@ from xml.etree import ElementTree as ET
 
 TS = re.compile(r'^\[\d\d:\d\d\]$')
 CJK = re.compile(r'[\u4e00-\u9fff]')
-# 头部标签行：频道 / 原视频链接 / 视频时长 / 整理日期
+# 头部标签行。2026-09-24 起正式口径只允许「原视频链接 / 整理日期」两行；
+# 「频道」「视频时长」已废弃，但仍留在模式里 —— 这样老稿子还能被正确识别头部，
+# 同时下面有专门的检查把它们标出来。
 HDR = re.compile(r'^(频道|原视频链接|视频时长|整理日期)\s*[：:]')
+BANNED_HDR = ('频道', '视频时长')
 # 段落：**自闭合空段** 或 正常配对段落。
 # 前半段不能少 —— `doc_insert_paragraph_with_text(text="")` 建出的空段就是 `<w:p .../>`，
 # 用 `<w:p[ >].*?</w:p>` 会漏掉它们（还会漏数段落、误判缩进）。
@@ -29,8 +32,8 @@ PAT = re.compile(r'<w:p\b[^>]*/>|<w:p[ >].*?</w:p>', re.S)
 def guess_header_lines(texts):
     """头部 = 大标题 + 紧随其后的标签行。
 
-    2026-09-24 起头部是**条件性**的：
-      给了原视频链接 → 4 段（标题 / 频道 / 原视频链接 / 视频时长…整理日期）
+    2026-09-24 起头部是**条件性**的（当天用户改的口径，频道/时长已废弃）：
+      给了原视频链接 → 3 段（标题 / 原视频链接 / 整理日期）
       没给链接       → 2 段（标题 / 整理日期）
     这里按「从第 2 段起连续匹配标签模式」自动探测，避免手填错。
     """
@@ -49,7 +52,7 @@ def main():
     ap.add_argument('--expect-blocks', type=int, default=None,
                     help='分段精读区预期区块数（= 时间戳数）')
     ap.add_argument('--header-lines', type=int, default=None,
-                    help='头部段数（标题 + 标签行）。默认自动探测：有链接 4 段 / 无链接 2 段')
+                    help='头部段数（标题 + 标签行）。默认自动探测：有链接 3 段 / 无链接 2 段')
     args = ap.parse_args()
 
     p = args.path
@@ -103,14 +106,18 @@ def main():
     check('时间戳数 = 区块数', args.expect_blocks is None or n_ts == args.expect_blocks,
           f'实际 {n_ts}' + (f' / 预期 {args.expect_blocks}' if args.expect_blocks else ''))
 
-    # 头部行数：有链接 4 段 / 无链接 2 段，自动探测
+    # 头部行数：有链接 3 段 / 无链接 2 段，自动探测
     all_txt = [txt(q).strip() for q in paras]
     hdr = args.header_lines or guess_header_lines(all_txt)
     has_link = any(t.startswith('原视频链接') for t in all_txt[:hdr])
     print(f'  头部 {hdr} 段（{"手动指定" if args.header_lines else "自动探测"}）→ '
-          f'{"含原视频链接" if has_link else "无链接：频道/链接/时长都不写"}')
+          f'{"含原视频链接" if has_link else "无链接：整行不写"}')
     for t in all_txt[:hdr]:
         print(f'    {t[:60]!r}')
+    banned = [t for t in all_txt[:hdr]
+              if any(t.startswith(b) for b in BANNED_HDR)]
+    check('头部无「频道」/「视频时长」行（2026-09-24 新规）', not banned,
+          f'多出 {banned}（老稿子可忽略；新稿必须删）' if banned else '')
 
     # ---------- 3. 区块模式 ----------
     i0 = next((i for i, q in enumerate(paras) if txt(q).strip().startswith('一、分段精读')), None)
@@ -136,6 +143,10 @@ def main():
     else:
         print('  ➖ 超链接检查：本次头部无「原视频链接」行，跳过')
     check('无版权行残留', not any('版权' in txt(q) for q in paras))
+    # 2026-09-24 提速改版：只保留「一、分段精读」+「二、重点词汇」两节
+    sec3 = [t for t in all_txt if t.startswith('三、')]
+    check('无「三、重点句子」节（2026-09-24 已删除）', not sec3,
+          f'多出 {sec3}（老稿子可忽略；新稿必须删）' if sec3 else '')
     n_labels = hdr - 1
     n_off = len(re.findall(r'<w:b w:val="0"/>', doc))
     check(f'头部 {n_labels} 个标签显式不加粗', n_off >= n_labels,

@@ -31,8 +31,12 @@
 ## 中间稿要求
 
 - 第 1 行必须是 `# 视频标题`（大标题）
-- 头部标签行写成 `**整理日期：**2026-09-24`（有链接时再加 `**频道：**` 等）
+- 头部标签行写成 `**整理日期：**2026-09-24`（有链接时在它上面再加一行
+  `**原视频链接：**https://…`）。🚫 **不要写「频道」「视频时长」**（2026-09-24 起废弃）
 - `## 一、分段精读` / `## 二、重点词汇` 两个二级标题**必须存在**（脚本靠它们定位区块）
+- 🚫 **没有 `## 三、重点句子`**（2026-09-24 整节删除）。文档到「二、重点词汇」就结束。
+  词表 **3 组 × 7–8 条 = 20–22 条**，每条 2 行（`**N. term**　词性　释义` + `例：… — 中文`），
+  **只有 6–8 条有坑的**才加第 3 行 `提示：`。
 - 每个区块 = `**[MM:SS]**` + 英文段 + 中文段
 
 ## 前置
@@ -102,6 +106,20 @@ def check_markdown(path):
     stat['相邻加粗'] = len(adj)
     if adj:
         bad.append(f'有 {len(adj)} 处相邻加粗（会吞空格）：{adj[:2]}')
+
+    # ---- 2026-09-24 提速改版：不许再出现「三、重点句子」----
+    i3 = next((i for i, l in enumerate(lines) if l.startswith('## ') and '三、' in l), None)
+    if i3 is not None:
+        bad.append(f'出现了 `{lines[i3].strip()}` —— 「三、重点句子」2026-09-24 已整节删除，'
+                   f'有价值的"看点"请并进词条的 `提示：`')
+
+    # 词表体量（统计用，不拦人 —— 短素材允许少几条）
+    if i2 is not None:
+        tail = lines[i2:]
+        stat['词条数'] = len([l for l in tail if re.match(r'^\*\*\d+\.\s', l.strip())])
+        stat['提示条数'] = len([l for l in tail
+                                if l.strip().lstrip('*').startswith('提示：')])
+        stat['分组数'] = len([l for l in tail if re.match(r'^[①②③④⑤⑥⑦⑧⑨]', l.strip())])
 
     odd = [i + 1 for i, l in enumerate(lines) if l.count('**') % 2]
     if odd:
@@ -245,6 +263,10 @@ def main():
                 print('   - ' + b)
             return 1
         say('check_markdown', f'{stat["区块数"]} 区块 / 大意 {stat["全篇大意中文字数"]} 字', t)
+        if '词条数' in stat:
+            print(f'   · 词表：{stat["分组数"]} 组 / {stat["词条数"]} 条 / '
+                  f'{stat["提示条数"]} 条带提示'
+                  f'（目标 3 组 / 20–22 条 / 提示 6–8 条）')
 
     call = make_caller(args.sdk_dir, verbose=args.verbose)
     say('connect_edsdk', '')
